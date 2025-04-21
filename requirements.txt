@@ -1,0 +1,11 @@
+langchain-mcp-adapters
+langchain
+langgraph
+langchain_community
+langchain_openai
+openai
+httpx
+
+langchain-google-genai
+
+python-dotenv
