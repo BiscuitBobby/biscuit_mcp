@@ -1,0 +1,165 @@
+from pprint import pprint
+import re
+import subprocess
+import shlex
+from urllib.parse import quote_plus
+from mcp.server.fastmcp import FastMCP
+from audit import log
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+def search_with_lynx(query: str, timeout: int = 60) -> str:
+    if not isinstance(query, str):
+        query = str(query)
+
+    try:
+        encoded_query = quote_plus(query)
+
+        url = f"{os.getenv("SEARCH_ENGINE")}?q={encoded_query}"
+
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "alpine/lynx",
+            "-display_charset=UTF-8",
+            "-dump",
+            url
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,  # Capture stdout and stderr as BYTES
+            check=True,           # Raise CalledProcessError if command returns non-zero
+            timeout=timeout
+        )
+
+        stdout_text = result.stdout.decode('utf-8', errors='replace')
+        return stdout_text
+
+    except FileNotFoundError:
+        error_message = "Error: 'docker' command not found. Is Docker installed and in your system's PATH?"
+        log(error_message)
+        return error_message
+
+    except subprocess.CalledProcessError as e:
+        stderr_text = e.stderr.decode('utf-8', errors='replace').strip()
+        safe_command_str = ' '.join(shlex.quote(arg) for arg in command)
+        error_message = (
+            f"Error: Docker command failed with exit code {e.returncode}.\n"
+            f"Command: {safe_command_str}\n"
+            f"Stderr: {stderr_text}"
+        )
+        log(error_message)
+        return error_message
+
+    except subprocess.TimeoutExpired as e:
+        stderr_text = ""
+        if e.stderr:
+            stderr_text = e.stderr.decode('utf-8', errors='replace').strip()
+        safe_command_str = ' '.join(shlex.quote(arg) for arg in command)
+        error_message = (
+             f"Error: Command timed out after {timeout} seconds.\n"
+             f"Command: {safe_command_str}\n"
+             f"Stderr so far: {stderr_text or 'N/A'}"
+        )
+        log(error_message)
+        return error_message
+
+    except Exception as e:
+        command_str = "docker run ..."
+        try:
+           command_str = ' '.join(shlex.quote(arg) for arg in command)
+        except NameError:
+           pass
+        error_message = f"Error: An unexpected error occurred while trying to run '{command_str}': {e}"
+        log(error_message)
+        return error_message
+
+
+
+def parse_search_output_to_dict(text: str) -> dict[int, dict[str, str | None]]:
+    if not text or not isinstance(text, str):
+        return {}
+
+    try:
+        ref_marker = "\nReferences\n"
+        split_pattern = re.compile(r'\n\s*References\s*\n', re.IGNORECASE)
+        parts = split_pattern.split(text, 1)
+
+        if len(parts) != 2:
+            log("Warning: 'References' section delimiter not found clearly. Parsing might be incomplete.")
+            content_part = text
+            references_part = ""
+        else:
+            content_part = parts[0]
+            references_part = parts[1]
+
+    except Exception as e:
+        log(f"Error splitting content and references: {e}")
+        content_part = text
+        references_part = ""
+
+    url_map = {}
+    if references_part:
+        reference_lines = references_part.strip().split('\n')
+        for line in reference_lines:
+            line = line.strip()
+            if not line:
+                continue
+            match = re.match(r'^(\d+)\.\s+(https?://\S+)', line)
+            if match:
+                try:
+                    num = int(match.group(1))
+                    url = match.group(2)
+                    url_map[num] = url
+                except ValueError:
+                    log(f"Warning: Could not parse reference number in line: {line}")
+            else:
+                log(f"Warning: Skipping malformed reference line: {line}")
+
+    matches = list(re.finditer(r'\[(\d+)\]', content_part))
+    results: dict[int, dict[str, str | None]] = {}
+
+    for i, current_match in enumerate(matches):
+        try:
+            num = int(current_match.group(1))
+            start_pos = current_match.end()
+
+            if i + 1 < len(matches):
+                end_pos = matches[i+1].start()
+            else:
+                end_pos = len(content_part)
+
+            description_raw = content_part[start_pos:end_pos]
+            description_clean = re.sub(r'\s+', ' ', description_raw).strip()
+
+            if description_clean:
+                results[num] = {
+                    'description': description_clean,
+                    'url': url_map.get(num)
+                }
+
+        except ValueError:
+            log(f"Warning: Could not parse number from marker: {current_match.group(0)}")
+        except Exception as e:
+            log(f"Error processing match {current_match.group(0)}: {e}")
+
+    return results
+
+
+mcp = FastMCP("Web search")
+
+@mcp.tool()
+def search_web(search_term: str) -> dict:
+        """Searche the Web arg: search term"""
+        log(f"Searching for: '{search_term}' using lynx in Docker...")
+        output = search_with_lynx(search_term)
+        output = parse_search_output_to_dict(output)
+        log(output)
+        return output
+
+if __name__ == "__main__":
+        mcp.run(transport="stdio")
