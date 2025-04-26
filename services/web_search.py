@@ -1,4 +1,3 @@
-from pprint import pprint
 import re
 import subprocess
 import shlex
@@ -8,17 +7,12 @@ from audit import log
 from dotenv import load_dotenv
 import os
 
+from rag import find_similar_content
+
 load_dotenv()
 
-def search_with_lynx(query: str, timeout: int = 60) -> str:
-    if not isinstance(query, str):
-        query = str(query)
-
+def search_with_lynx(url: str, timeout: int = 60) -> str:
     try:
-        encoded_query = quote_plus(query)
-
-        url = f"{os.getenv("SEARCH_ENGINE")}?q={encoded_query}"
-
         command = [
             "docker",
             "run",
@@ -153,13 +147,36 @@ def parse_search_output_to_dict(text: str) -> dict[int, dict[str, str | None]]:
 mcp = FastMCP("Web search")
 
 @mcp.tool()
-def search_web(search_term: str) -> dict:
-        """Searche the Web arg: search term"""
-        log(f"Searching for: '{search_term}' using lynx in Docker...")
-        output = search_with_lynx(search_term)
-        output = parse_search_output_to_dict(output)
-        log(output)
-        return output
+def search_web(search_query: str) -> dict:
+        """Search the Web arg: search term"""
+        log(f"Searching for: '{search_query}' using lynx in Docker...")
+
+        if not isinstance(search_query, str):
+            search_query = str(search_query)
+        encoded_query = quote_plus(search_query)
+        url = f"{os.getenv("SEARCH_ENGINE")}?q={encoded_query}"
+
+        results = search_with_lynx(url)
+        output = parse_search_output_to_dict(results)
+
+        lim = 3
+        doc = ''
+
+        for i in output:
+            if i>4:
+                if lim>0:
+                    log(i)
+                    log(output[i])
+                    try:
+                        doc += f"{search_with_lynx(output[i]["url"])}\n"
+                        lim -= 1
+                    except Exception as e:
+                        log(e)
+        #log(doc)
+        most_relevant = find_similar_content(search_query, doc)
+
+        log(most_relevant)
+        return most_relevant
 
 if __name__ == "__main__":
         mcp.run(transport="stdio")
