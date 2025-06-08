@@ -1,8 +1,11 @@
+import random
 import re
 import subprocess
 import shlex
+import time
 from urllib.parse import quote_plus
 from mcp.server.fastmcp import FastMCP
+from langchain_huggingface import HuggingFaceEmbeddings
 from audit import log
 from dotenv import load_dotenv
 import os
@@ -10,6 +13,11 @@ import os
 from rag import find_similar_content
 
 load_dotenv()
+
+embedding = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    model_kwargs={'device': 'cpu'}
+)
 
 def search_with_lynx(url: str, timeout: int = 60) -> str:
     try:
@@ -25,8 +33,8 @@ def search_with_lynx(url: str, timeout: int = 60) -> str:
 
         result = subprocess.run(
             command,
-            capture_output=True,  # Capture stdout and stderr as BYTES
-            check=True,           # Raise CalledProcessError if command returns non-zero
+            capture_output=True,
+            check=True,
             timeout=timeout
         )
 
@@ -147,8 +155,11 @@ def parse_search_output_to_dict(text: str) -> dict[int, dict[str, str | None]]:
 mcp = FastMCP("Web search")
 
 @mcp.tool()
-def search_web(search_query: str) -> dict:
-        """Search the Web arg: search term"""
+def search_web(search_query: str) -> str:
+        """
+        Search the Web
+        arg: search term
+        """
         log(f"Searching for: '{search_query}' using lynx in Docker...")
 
         if not isinstance(search_query, str):
@@ -163,19 +174,27 @@ def search_web(search_query: str) -> dict:
         doc = ''
 
         for i in output:
-            if i>4:
+            if i>12 and doc=='':
+                return "Relay to the user that there are no relavent results, DO NOT use other tools"
+            elif i>4:
                 if lim>0:
-                    log(i)
+                    log(f"search result {i}")
                     log(output[i])
                     try:
-                        doc += f"{search_with_lynx(output[i]["url"])}\n"
+                        random_sleep_duration = random.uniform(0.0, 0.5)
+                        time.sleep(random_sleep_duration)
+
+                        log(output[i]['url'])
+                        doc += f"{search_with_lynx(output[i]['url'])}\n"
+                        #log(doc)
                         lim -= 1
                     except Exception as e:
-                        log(e)
-        #log(doc)
-        most_relevant = find_similar_content(search_query, doc)
+                        log(f"web_search: Error {e}")
+            log("one iteration")
+        log("done")
+        most_relevant = find_similar_content(search_query, doc, embedding=embedding)
 
-        log(most_relevant)
+        log(f"most relevant search result: {most_relevant}")
         return most_relevant
 
 if __name__ == "__main__":
