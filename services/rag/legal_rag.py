@@ -1,9 +1,11 @@
 import os
 import hashlib
 from pathlib import Path
-from gemini_summarise import summarize
+from langchain_core.tools import tool
+from services.rag.gemini_summarise import summarize
 from langchain_openai import ChatOpenAI
 from langchain_postgres import PGVector
+from typing import Type, Optional, Dict, Any
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
@@ -109,38 +111,75 @@ def ingest_documents(folder_path: str, max_docs: int = 5):
     print(f"  ⏭️ Skipped: {len(skipped)}")
 
 # ----------------------- RETRIEVAL -----------------------
-def search_law_documents(query: str, summary_top_k: int = 5, doc_top_k: int = 10, doc_score_threshold: float = 0.8):
-    print("=" * 80)
-    print("🔍 SUMMARY RESULTS")
-    print("=" * 80)
-
+def search_law_documents(query: str, summary_top_k: int = 5) -> Dict[str, Any]:
+    # Search summaries using semantic similarity
     summary_results = summary_vector_store.similarity_search_with_score(query, k=summary_top_k)
-    for i, (doc, score) in enumerate(summary_results, 1):
-        print(f"\nSummary {i} (Score: {score:.4f})")
-        print(f"File: {doc.metadata.get('id')}")
-        print(doc.page_content[:400] + "...")
-        print("-" * 60)
 
-    print("\n" + "=" * 80)
-    print("📘 FULL DOCUMENT RESULTS")
-    print("=" * 80)
+    combined_results = []
 
-    case_results = case_vector_store.similarity_search_with_score(query, k=doc_top_k)
-    filtered_results = [(doc, score) for doc, score in case_results if score < doc_score_threshold]
+    for summary_doc, summary_score in summary_results:
+        doc_id = summary_doc.metadata.get("id")
+        summary_metadata = summary_doc.metadata
 
-    for i, (doc, score) in enumerate(filtered_results, 1):
-        print(f"\nDoc {i} (Score: {score:.4f})")
-        print(f"File: {doc.metadata.get('id')}")
-        print(doc.page_content[:400] + "...")
-        print("-" * 60)
+        # Try to fetch corresponding full document by ID from case vector store
+        full_doc_match = case_vector_store.similarity_search(
+            query="",  # Empty query because we're retrieving by ID
+            k=1,
+            filter={"id": doc_id}
+        )
 
-# ----------------------- MAIN -----------------------
+        full_document = None
+        if full_doc_match:
+            full_document = {
+                "content": full_doc_match[0].page_content,
+                "metadata": full_doc_match[0].metadata
+            }
+
+        combined_results.append({
+            "id": doc_id,
+            "metadata": summary_metadata,
+            "summary": {
+                "score": summary_score,
+                "content": summary_doc.page_content
+            },
+            "full_document": full_document
+        })
+
+    # print(combined_results)
+    return {
+        "query": query,
+        "results": combined_results
+    }
+
+
+# ----------------------- TOOL -----------------------
+latest_law_results = None
+
+@tool
+def law_search_tool(query: str):
+    """Searches legal documents for relevant court cases."""
+    global latest_law_results
+
+    results = search_law_documents(query)
+    if not results["results"]:
+        return "No relevant legal documents found for your query."
+    top_result = results["results"][0]["summary"]["content"]
+    latest_law_results = results
+
+    return f"Top result: {top_result}\n"
+
+@tool
+def constitution_tool(query: str):
+    """Get relevant constitutional provisions."""
+    return f"Constitution says something relevant about: '{query}' (dummy result)"
+
+# ----------------------- TEST -----------------------
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Law Retrieval Agent")
-    parser.add_argument("--ingest", type=str, help="Path to folder containing legal documents")
-    parser.add_argument("--query", type=str, help="Search query")
+    parser.add_argument("--ingest", type=str, help="Path to folder containing legal documents")  # python services/rag/legal_rag.py --ingest '/home/biscuitbobby/Downloads/output' --max_docs 5
+    parser.add_argument("--query", type=str, help="Search query") # python services/rag/legal_rag.py --query "What is the summary of Suneeti Toteja vs State Of U.P?"
     parser.add_argument("--max_docs", type=int, default=5, help="Max number of documents to ingest")
     args = parser.parse_args()
 
@@ -148,4 +187,4 @@ if __name__ == "__main__":
         ingest_documents(args.ingest, max_docs=args.max_docs)
 
     if args.query:
-        search_law_documents(args.query)
+        print(law_search_tool.invoke(args.query))
