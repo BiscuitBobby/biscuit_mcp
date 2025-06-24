@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'legal-purple': '#6366f1',
+                        'legal-purple-dark': '#4f46e5',
+                        'legal-bg': '#0f0f23',
+                        'legal-sidebar': '#1a1a2e',
+                        'legal-card': '#16213e'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-legal-bg text-white min-h-screen">
+    <div class="flex h-screen">
+        <!-- Sidebar (Left) -->
+        <div class="w-64 bg-legal-sidebar border-r border-gray-700 flex flex-col flex-shrink-0">
+            <!-- Header -->
+            <div class="p-4 border-b border-gray-700">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-legal-purple rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2L13.09 8.26L19 7L17.74 13.09L24 12L17.74 10.91L19 17L13.09 15.74L12 22L10.91 15.74L5 17L6.26 10.91L0 12L6.26 13.09L5 7L10.91 8.26L12 2Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">Legal Assistant</h1>
+                        <p class="text-xs text-gray-400">AI-Powered Legal Research</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- New Chat Button -->
+            <div class="p-4">
+                <button id="newChatBtn" class="w-full bg-legal-purple hover:bg-legal-purple-dark text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <span>New Chat</span>
+                </button>
+            </div>
+
+            <!-- Chat Sessions -->
+            <div class="flex-1 overflow-y-auto">
+                <div class="px-4 pb-2">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Chat Sessions</h3>
+                        <button id="refreshChats" class="text-gray-400 hover:text-white transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="chatList" class="space-y-1">
+                        <div class="flex items-center text-red-400 text-sm py-2">
+                            <div class="w-2 h-2 bg-red-400 rounded-full mr-2"></div>
+                            Connecting...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Welcome Screen -->
+            <div id="welcomeScreen" class="flex-1 flex items-center justify-center">
+                <div class="text-center max-w-2xl px-8">
+                    <div class="w-16 h-16 bg-legal-purple rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-3xl font-bold mb-4">Welcome to Legal Assistant</h2>
+                    <p class="text-gray-400 mb-8 leading-relaxed">
+                        Create a new chat session to start your legal research. Our AI assistant can help 
+                        you with constitutional law, case research, and legal precedents using advanced 
+                        RAG technology.
+                    </p>
+                    <button id="startNewSession" class="bg-legal-purple hover:bg-legal-purple-dark text-white font-medium py-3 px-6 rounded-lg flex items-center space-x-2 mx-auto transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        <span>Start New Session</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Chat Interface -->
+            <div id="chatInterface" class="hidden flex-1 flex flex-col overflow-hidden">
+                <!-- Chat Header -->
+                <div class="border-b border-gray-700 p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="font-semibold">Legal Research Chat</h2>
+                            <p class="text-sm text-gray-400" id="chatId">Chat ID: None</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button id="viewHistory" class="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </button>
+                            <button id="deleteChat" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-900/20 transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Messages Container -->
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
+                    <!-- Messages will be dynamically added here -->
+                </div>
+
+                <!-- Input Area -->
+                <div class="border-t border-gray-700 p-4">
+                    <div class="flex space-x-4">
+                        <div class="flex-1 relative">
+                            <textarea 
+                                id="queryInput" 
+                                placeholder="Ask a legal question..."
+                                class="w-full bg-legal-card border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-legal-purple focus:border-transparent"
+                                rows="2"
+                            ></textarea>
+                        </div>
+                        <button 
+                            id="sendQuery" 
+                            class="bg-legal-purple hover:bg-legal-purple-dark text-white p-3 rounded-lg transition-colors flex items-center justify-center min-w-[48px]"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Related Documents Sidebar (Right) -->
+        <div id="relatedDocsSidebar" class="hidden w-96 bg-legal-sidebar border-l border-gray-700 flex flex-col flex-shrink-0">
+            <!-- Content generated by JS -->
+        </div>
+
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-legal-card p-6 rounded-lg flex items-center space-x-3">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-legal-purple"></div>
+            <span class="text-white">Processing your request...</span>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-legal-card p-6 rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">Chat History</h3>
+                <button id="closeHistory" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="historyContent" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <!-- Full Case Modal -->
+    <div id="fullCaseModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-legal-card p-6 rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4 border-b border-gray-600 pb-3">
+                <h3 id="fullCaseTitle" class="text-lg font-semibold">Case Details</h3>
+                <button id="closeFullCase" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="fullCaseContent" class="flex-1 overflow-y-auto pr-2 text-sm text-gray-300 leading-relaxed">
+                <!-- Full case text will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+
+<script>
+    // Global state
+    let currentChatId = null;
+    let relatedDocsData = {}; // Store full data for related documents
+    const API_BASE_URL = 'http://localhost:8000';
+
+    // DOM Elements
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const chatInterface = document.getElementById('chatInterface');
+    const chatList = document.getElementById('chatList');
+    const messagesContainer = document.getElementById('messagesContainer');
+    const queryInput = document.getElementById('queryInput');
+    const sendQuery = document.getElementById('sendQuery');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const startNewSession = document.getElementById('startNewSession');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const historyModal = document.getElementById('historyModal');
+    const chatIdDisplay = document.getElementById('chatId');
+    const relatedDocsSidebar = document.getElementById('relatedDocsSidebar');
+    const fullCaseModal = document.getElementById('fullCaseModal');
+    const fullCaseTitle = document.getElementById('fullCaseTitle');
+    const fullCaseContent = document.getElementById('fullCaseContent');
+
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        loadChatSessions();
+        setupEventListeners();
+    });
+
+    function setupEventListeners() {
+        newChatBtn.addEventListener('click', createNewChat);
+        startNewSession.addEventListener('click', createNewChat);
+        sendQuery.addEventListener('click', handleSendQuery);
+        document.getElementById('refreshChats').addEventListener('click', loadChatSessions);
+        document.getElementById('viewHistory').addEventListener('click', showHistory);
+        document.getElementById('deleteChat').addEventListener('click', handleDeleteChat);
+        document.getElementById('closeHistory').addEventListener('click', () => historyModal.classList.add('hidden'));
+
+        // New listeners for Related Docs and Full Case Modal
+        relatedDocsSidebar.addEventListener('click', handleSummaryCardClick);
+        document.getElementById('closeFullCase').addEventListener('click', () => fullCaseModal.classList.add('hidden'));
+
+
+        // Enter key to send message
+        queryInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendQuery();
+            }
+        });
+    }
+
+    async function createNewChat() {
+        showLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            if (response.ok) {
+                const data = await response.json();
+                currentChatId = data.chat_id;
+                switchToChatInterface();
+                loadChatSessions();
+                addMessage('system', 'New chat session created. How can I help you with your legal research?');
+            } else { throw new Error('Failed to create chat'); }
+        } catch (error) {
+            console.error('Error creating chat:', error);
+            alert('Failed to create new chat session');
+        } finally { showLoading(false); }
+    }
+
+    async function loadChatSessions() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/chats`);
+            if (response.ok) {
+                const data = await response.json();
+                displayChatSessions(data.chat_ids);
+            }
+        } catch (error) {
+            console.error('Error loading chat sessions:', error);
+            chatList.innerHTML = '<div class="text-red-400 text-sm py-2">Failed to load sessions</div>';
+        }
+    }
+
+    function displayChatSessions(chatIds) {
+        if (chatIds.length === 0) {
+            chatList.innerHTML = '<div class="text-gray-500 text-sm py-2">No active sessions</div>';
+            return;
+        }
+        chatList.innerHTML = chatIds.map(chatId => `
+            <div class="chat-session-item p-2 rounded-lg hover:bg-legal-card cursor-pointer transition-colors ${chatId === currentChatId ? 'bg-legal-purple' : ''}" 
+                 data-chat-id="${chatId}">
+                <div class="text-sm font-medium truncate">Chat ${chatId.substring(0, 8)}...</div>
+                <div class="text-xs text-gray-400">Active session</div>
+            </div>
+        `).join('');
+        document.querySelectorAll('.chat-session-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const chatId = this.dataset.chatId;
+                switchToChat(chatId);
+            });
+        });
+    }
+
+    function switchToChat(chatId) {
+        currentChatId = chatId;
+        switchToChatInterface();
+        loadChatHistory();
+    }
+
+    function switchToChatInterface() {
+        welcomeScreen.classList.add('hidden');
+        chatInterface.classList.remove('hidden');
+        chatIdDisplay.textContent = `Chat ID: ${currentChatId.substring(0, 8)}...`;
+        relatedDocsSidebar.classList.add('hidden'); // Hide sidebar on switch
+        queryInput.focus();
+    }
+
+    async function handleSendQuery() {
+        const query = queryInput.value.trim();
+        if (!query || !currentChatId) return;
+
+        addMessage('user', query);
+        queryInput.value = '';
+        showLoading(true);
+
+        // Hide and clear related docs sidebar for new query
+        relatedDocsSidebar.classList.add('hidden');
+        relatedDocsSidebar.innerHTML = '';
+        relatedDocsData = {};
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/chat/${currentChatId}/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                addMessage('assistant', data.researcher_result);
+                
+                // Populate right sidebar if legal documents are returned
+                if (data.latest_law_results && data.latest_law_results.results && data.latest_law_results.results.length > 0) {
+                    populateRelatedDocsSidebar(data.latest_law_results.results);
+                }
+            } else {
+                throw new Error('Failed to send query');
+            }
+        } catch (error) {
+            console.error('Error sending query:', error);
+            addMessage('system', 'Sorry, there was an error processing your request.');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function addMessage(type, content) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        
+        if (type === 'user') {
+            messageDiv.innerHTML = `
+                <div class="flex items-start space-x-3 justify-end">
+                    <div class="bg-legal-purple text-white p-3 rounded-lg max-w-xs lg:max-w-md">
+                        <p class="text-sm">${content}</p>
+                    </div>
+                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0"><span class="text-xs font-bold text-white">U</span></div>
+                </div>`;
+        } else if (type === 'assistant') {
+            messageDiv.innerHTML = `
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 bg-legal-purple rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L13.09 8.26L19 7L17.74 13.09L24 12L17.74 10.91L19 17L13.09 15.74L12 22L10.91 15.74L5 17L6.26 10.91L0 12L6.26 13.09L5 7L10.91 8.26L12 2Z"/></svg>
+                    </div>
+                    <div class="bg-legal-card text-white p-3 rounded-lg max-w-xs lg:max-w-2xl"><p class="text-sm">${content}</p></div>
+                </div>`;
+        } else {
+            messageDiv.innerHTML = `<div class="flex justify-center"><div class="bg-gray-700 text-gray-300 p-2 rounded-lg text-xs">${content}</div></div>`;
+        }
+
+        messagesContainer.appendChild(messageDiv);
+
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    function populateRelatedDocsSidebar(results) {
+        // Reset and populate data store
+        relatedDocsData = {};
+        results.forEach(doc => {
+            relatedDocsData[doc.id] = doc;
+        });
+
+        const sidebarHeader = `
+            <div class="p-4 border-b border-gray-700">
+                <h3 class="text-md font-semibold text-white">Related Legal Documents</h3>
+            </div>`;
+
+        const cardsHTML = results.map(result => `
+            <div class="summary-card bg-legal-card hover:bg-gray-700 p-4 m-4 rounded-lg cursor-pointer transition-colors" data-doc-id="${result.id}">
+                <p class="text-sm font-semibold text-legal-purple mb-2 truncate" title="${result.metadata.title || 'No Title'}">${result.metadata.title || 'Related Document'}</p>
+                <p class="text-xs text-gray-300 mb-2 leading-relaxed h-16 overflow-hidden">${result.summary.content}</p>
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                    <span>ID: ${result.id.substring(0, 8)}...</span>
+                    <span>Score: ${result.summary.score.toFixed(3)}</span>
+                </div>
+            </div>
+        `).join('');
+
+        relatedDocsSidebar.innerHTML = sidebarHeader + `<div class="flex-1 overflow-y-auto">${cardsHTML}</div>`;
+        relatedDocsSidebar.classList.remove('hidden');
+    }
+
+    function handleSummaryCardClick(e) {
+        const card = e.target.closest('.summary-card');
+        if (!card) return;
+
+        const docId = card.dataset.docId;
+        const docData = relatedDocsData[docId];
+
+        if (docData) {
+            showFullCaseModal(docData);
+        } else {
+            console.error('Document data not found for ID:', docId);
+        }
+    }
+
+    function showFullCaseModal(docData) {
+        // Use the metadata from the full document for the title, with fallbacks.
+        const title = (docData.full_document && docData.full_document.metadata && docData.full_document.metadata.title)
+                      ? docData.full_document.metadata.title
+                      : (docData.metadata.title || `Document ${docData.id}`);
+        fullCaseTitle.textContent = title;
+        
+        // Correctly access the content from the nested full_document object.
+        const content = (docData.full_document && docData.full_document.content)
+                      ? docData.full_document.content
+                      : "Full document content is not available.";
+
+        // Format for HTML display, ensuring content is treated as a string.
+        const formattedContent = String(content).replace(/\n/g, '<br>');
+
+        fullCaseContent.innerHTML = formattedContent;
+        fullCaseModal.classList.remove('hidden');
+    }
+
+    async function showHistory() {
+        if (!currentChatId) return;
+        try {
+            const response = await fetch(`${API_BASE_URL}/chat/${currentChatId}/history`);
+            if (response.ok) {
+                const data = await response.json();
+                displayHistory(data.history);
+                historyModal.classList.remove('hidden');
+            }
+        } catch (error) { console.error('Error loading history:', error); }
+    }
+
+    function displayHistory(history) {
+        const historyContentEl = document.getElementById('historyContent');
+        if (history.length === 0) {
+            historyContentEl.innerHTML = '<p class="text-gray-400">No history available</p>';
+            return;
+        }
+        historyContentEl.innerHTML = history.map(msg => `
+            <div class="p-3 rounded-lg ${msg.type === 'human' ? 'bg-legal-purple' : 'bg-legal-card'}">
+                <div class="text-xs text-gray-400 mb-1">${msg.type}</div>
+                <div class="text-sm">${msg.content}</div>
+            </div>
+        `).join('');
+    }
+
+    async function loadChatHistory() {
+        if (!currentChatId) return;
+        try {
+            const response = await fetch(`${API_BASE_URL}/chat/${currentChatId}/history`);
+            if (response.ok) {
+                const data = await response.json();
+                messagesContainer.innerHTML = '';
+                data.history.forEach(msg => {
+                    addMessage(msg.type === 'human' ? 'user' : 'assistant', msg.content);
+                });
+            }
+        } catch (error) { console.error('Error loading chat history:', error); }
+    }
+
+    async function handleDeleteChat() {
+        if (!currentChatId || !confirm('Are you sure you want to delete this chat session?')) return;
+        try {
+            const response = await fetch(`${API_BASE_URL}/chat/${currentChatId}`, { method: 'DELETE' });
+            if (response.ok) {
+                currentChatId = null;
+                welcomeScreen.classList.remove('hidden');
+                chatInterface.classList.add('hidden');
+                relatedDocsSidebar.classList.add('hidden');
+                loadChatSessions();
+            }
+        } catch (error) { console.error('Error deleting chat:', error); }
+    }
+
+    function showLoading(show) {
+        loadingOverlay.classList.toggle('hidden', !show);
+    }
+</script>
+
+</body>
+</html>

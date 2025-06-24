@@ -146,9 +146,10 @@ def search_law_documents(query: str, summary_top_k: int = 5) -> Dict[str, Any]:
         })
 
     # print(combined_results)
+    sorted_results = sorted(combined_results, key=lambda item: item['summary']['score'])
     return {
         "query": query,
-        "results": combined_results
+        "results": sorted_results
     }
 
 
@@ -157,7 +158,7 @@ latest_law_results = None
 
 @tool
 def law_search_tool(query: str):
-    """Searches legal documents for relevant court cases."""
+    """Searches legal documents for most relevant court case"""
     global latest_law_results
 
     results = search_law_documents(query)
