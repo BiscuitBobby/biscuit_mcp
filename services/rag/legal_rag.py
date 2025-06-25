@@ -1,8 +1,12 @@
 import os
+import json
 import hashlib
 from pathlib import Path
 from langchain_core.tools import tool
-from services.rag.gemini_summarise import summarize
+try:
+    from services.rag.gemini_summarise import summarize
+except ImportError:
+    from gemini_summarise import summarize
 from langchain_openai import ChatOpenAI
 from langchain_postgres import PGVector
 from typing import Type, Optional, Dict, Any
@@ -16,22 +20,63 @@ local_llm = ChatOpenAI(
     api_key="lm-studio",
 )
 
+laws_dir = '/home/biscuitbobby/Documents/mcp/archive'
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-connection = "postgresql+psycopg://langchain:langchain@localhost:6024/langchain"
+files = [f"{laws_dir}/constitution_qa.json", f"{laws_dir}/crpc_qa.json", f"{laws_dir}/ipc_qa.json"]
 
-summary_vector_store = PGVector(
-    embeddings=embeddings,
-    collection_name="case_summaries",
-    connection=connection,
-    use_jsonb=True,
-)
+# docker run --name pgvector-container -e POSTGRES_USER=langchain -e POSTGRES_PASSWORD=langchain -e POSTGRES_DB=langchain -p 6024:5432 -d pgvector/pgvector:pg16
+try:
+    connection = "postgresql+psycopg://langchain:langchain@localhost:6024/langchain"
 
-case_vector_store = PGVector(
-    embeddings=embeddings,
-    collection_name="case_docs",
-    connection=connection,
-    use_jsonb=True,
-)
+    summary_vector_store = PGVector(
+        embeddings=embeddings,
+        collection_name="case_summaries",
+        connection=connection,
+        use_jsonb=True,
+    )
+
+    case_vector_store = PGVector(
+        embeddings=embeddings,
+        collection_name="case_docs",
+        connection=connection,
+        use_jsonb=True,
+    )
+
+    law_vector_store = PGVector(
+        embeddings=embeddings,
+        collection_name="laws",
+        connection=connection,
+        use_jsonb=True,
+    )
+
+    for file in files:
+        results = law_vector_store.similarity_search_with_score(
+            query="dummy_query",
+            k=1,
+            filter={"source": file}
+        )
+
+        if results:
+            print(f"Skipping already ingested file: {file}")
+            continue
+
+        print(f"Ingesting: {file}")
+        with open(file, "r", encoding="utf-8") as f:
+            qa_pairs = json.load(f)
+
+            documents = [
+                Document(
+                    page_content=f"Q: {pair['question']}\nA: {pair['answer']}",
+                    metadata={"source": file}
+                )
+                for pair in qa_pairs
+            ]
+
+            law_vector_store.add_documents(documents)
+
+except Exception as e:
+    print(f"Error initializing vector stores: {e}\n start pgvector-container")
+    exit(1)
 
 # ----------------------- PDF PROCESSING -----------------------
 def extract_pdf_content(file_path: Path) -> str:
@@ -84,7 +129,14 @@ def ingest_documents(folder_path: str, max_docs: int = 5):
             continue
 
         print(f"📄 Ingesting: {file.name}")
-        summary = summarize(file, model="gemini-2.5-flash")
+
+        try:
+            summary = summarize(file, model="gemini-2.5-flash")
+        except Exception as e:
+            print(f"Error summarizing {file.name}: {e}")
+            max_docs = 0
+            continue
+
         content = extract_pdf_content(file)
         metadata = {
             "id": file.name,
@@ -154,25 +206,34 @@ def search_law_documents(query: str, summary_top_k: int = 5) -> Dict[str, Any]:
 
 
 # ----------------------- TOOL -----------------------
-latest_law_results = None
+related_cases = None
 
 @tool
 def law_search_tool(query: str):
     """Searches legal documents for most relevant court case"""
-    global latest_law_results
+    global related_cases
 
     results = search_law_documents(query)
     if not results["results"]:
         return "No relevant legal documents found for your query."
     top_result = results["results"][0]["summary"]["content"]
-    latest_law_results = results
+    related_cases = results
 
     return f"Top result: {top_result}\n"
 
-@tool
 def constitution_tool(query: str):
-    """Get relevant constitutional provisions."""
-    return f"Constitution says something relevant about: '{query}' (dummy result)"
+    docs = law_vector_store.similarity_search(query, k=6)
+    results = []
+    for doc in docs:
+        source_path = doc.metadata.get("source", "unknown")
+        filename = source_path.split("/")[-1] if "/" in source_path else source_path
+        result = {
+            "source": filename,
+            "content": doc.page_content
+        }
+        results.append(result)
+    return results
+
 
 # ----------------------- TEST -----------------------
 if __name__ == "__main__":

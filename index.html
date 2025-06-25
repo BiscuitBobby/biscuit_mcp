@@ -336,9 +336,12 @@
                 const data = await response.json();
                 addMessage('assistant', data.researcher_result);
                 
-                // Populate right sidebar if legal documents are returned
-                if (data.latest_law_results && data.latest_law_results.results && data.latest_law_results.results.length > 0) {
-                    populateRelatedDocsSidebar(data.latest_law_results.results);
+                // Populate right sidebar if cases or laws are returned
+                const hasCases = data.related_cases && data.related_cases.results && data.related_cases.results.length > 0;
+                const hasLaws = data.relevant_laws && data.relevant_laws.length > 0;
+
+                if (hasCases || hasLaws) {
+                    populateRelatedDocsSidebar(data);
                 }
             } else {
                 throw new Error('Failed to send query');
@@ -359,7 +362,7 @@
             messageDiv.innerHTML = `
                 <div class="flex items-start space-x-3 justify-end">
                     <div class="bg-legal-purple text-white p-3 rounded-lg max-w-xs lg:max-w-md">
-                        <p class="text-sm">${content}</p>
+                        <p class="text-sm break-words">${content}</p>
                     </div>
                     <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0"><span class="text-xs font-bold text-white">U</span></div>
                 </div>`;
@@ -369,43 +372,83 @@
                     <div class="w-8 h-8 bg-legal-purple rounded-full flex items-center justify-center flex-shrink-0">
                         <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L13.09 8.26L19 7L17.74 13.09L24 12L17.74 10.91L19 17L13.09 15.74L12 22L10.91 15.74L5 17L6.26 10.91L0 12L6.26 13.09L5 7L10.91 8.26L12 2Z"/></svg>
                     </div>
-                    <div class="bg-legal-card text-white p-3 rounded-lg max-w-xs lg:max-w-2xl"><p class="text-sm">${content}</p></div>
+                    <div class="bg-legal-card text-white p-3 rounded-lg max-w-xs lg:max-w-2xl"><p class="text-sm whitespace-pre-wrap break-words">${content}</p></div>
                 </div>`;
         } else {
             messageDiv.innerHTML = `<div class="flex justify-center"><div class="bg-gray-700 text-gray-300 p-2 rounded-lg text-xs">${content}</div></div>`;
         }
 
         messagesContainer.appendChild(messageDiv);
-
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
     
-    function populateRelatedDocsSidebar(results) {
-        // Reset and populate data store
+    function populateRelatedDocsSidebar(data) {
+        // Reset data store for cases
         relatedDocsData = {};
-        results.forEach(doc => {
-            relatedDocsData[doc.id] = doc;
-        });
+        let finalHTML = '';
 
-        const sidebarHeader = `
-            <div class="p-4 border-b border-gray-700">
-                <h3 class="text-md font-semibold text-white">Related Legal Documents</h3>
-            </div>`;
+        const hasCases = data.related_cases && data.related_cases.results && data.related_cases.results.length > 0;
+        const hasLaws = data.relevant_laws && data.relevant_laws.length > 0;
 
-        const cardsHTML = results.map(result => `
-            <div class="summary-card bg-legal-card hover:bg-gray-700 p-4 m-4 rounded-lg cursor-pointer transition-colors" data-doc-id="${result.id}">
-                <p class="text-sm font-semibold text-legal-purple mb-2 truncate" title="${result.metadata.title || 'No Title'}">${result.metadata.title || 'Related Document'}</p>
-                <p class="text-xs text-gray-300 mb-2 leading-relaxed h-16 overflow-hidden">${result.summary.content}</p>
-                <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span>ID: ${result.id.substring(0, 8)}...</span>
-                    <span>Score: ${result.summary.score.toFixed(3)}</span>
+        // --- Section for Related Cases ---
+        if (hasCases) {
+            // Populate data store for the modal
+            data.related_cases.results.forEach(doc => {
+                relatedDocsData[doc.id] = doc;
+            });
+
+            const casesCardsHTML = data.related_cases.results.map(result => `
+                <div class="summary-card bg-legal-card hover:bg-gray-700 p-4 m-2 rounded-lg cursor-pointer transition-colors" data-doc-id="${result.id}">
+                    <p class="text-sm font-semibold text-legal-purple mb-2 truncate" title="${result.id || 'No Title'}">${result.id || 'Related Document'}</p>
+                    <p class="text-xs text-gray-300 mb-2 leading-relaxed h-16 overflow-hidden">${result.summary.content}</p>
+                    <div class="flex items-center justify-between text-xs text-gray-500">
+                        <span>ID: ${result.id.substring(0, 8)}...</span>
+                        <span>Score: ${result.summary.score.toFixed(3)}</span>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
 
-        relatedDocsSidebar.innerHTML = sidebarHeader + `<div class="flex-1 overflow-y-auto">${cardsHTML}</div>`;
-        relatedDocsSidebar.classList.remove('hidden');
+            finalHTML += `
+                <div class="flex flex-col flex-1 min-h-0">
+                    <div class="p-4 border-b border-gray-700 flex-shrink-0">
+                        <h3 class="text-md font-semibold text-white">Related Cases</h3>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-2">
+                        ${casesCardsHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Section for Relevant Laws ---
+        if (hasLaws) {
+            const lawsCardsHTML = data.relevant_laws.map(law => `
+                <div class="bg-legal-card p-4 m-2 rounded-lg">
+                    <p class="text-sm font-semibold text-legal-purple mb-2 truncate" title="${law.source || 'Unknown Source'}">${law.source || 'Unknown Source'}</p>
+                    <p class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap break-words">${law.content}</p>
+                </div>
+            `).join('');
+
+            finalHTML += `
+                <div class="flex flex-col flex-1 min-h-0">
+                    <div class="p-4 border-b border-gray-700 flex-shrink-0 ${hasCases ? 'border-t' : ''}">
+                        <h3 class="text-md font-semibold text-white">Relevant Laws</h3>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-2">
+                        ${lawsCardsHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (finalHTML) {
+            relatedDocsSidebar.innerHTML = finalHTML;
+            relatedDocsSidebar.classList.remove('hidden');
+        } else {
+            relatedDocsSidebar.classList.add('hidden');
+        }
     }
+
 
     function handleSummaryCardClick(e) {
         const card = e.target.closest('.summary-card');

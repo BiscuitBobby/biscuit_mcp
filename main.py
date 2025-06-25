@@ -132,9 +132,12 @@ def handle_legal_query(chat_id: str, request: LegalQueryRequest):
     chat_histories[chat_id].append({"type": "human", "content": query})
     chat_histories[chat_id].append({"type": "ai", "content": ai_response})
 
+    related_laws = constitution_tool(ai_response)
+
     return {
         "researcher_result": ai_response,
-        "latest_law_results": legal_rag.latest_law_results,
+        "related_cases": legal_rag.related_cases,
+        "relevant_laws": related_laws,
     }
 
 if __name__ == "__main__":
